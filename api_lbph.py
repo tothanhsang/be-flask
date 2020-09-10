@@ -16,12 +16,12 @@ app = Flask(__name__)
 CORS(app, support_credentials=True)
 myclient = pymongo.MongoClient("mongodb://localhost:27017/")
 db = myclient["college_attendance_system"]
-# mycol = mydb["customers"]
+face_detector = cv2.CascadeClassifier('lbpcascade_frontalface.xml')
 
 def face_detection(image):
     image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    haar_classifier = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
-    face = haar_classifier.detectMultiScale(image_gray, scaleFactor=1.3, minNeighbors=7)
+    haar_classifier = cv2.CascadeClassifier('lbpcascade_frontalface.xml')
+    face = haar_classifier.detectMultiScale(image_gray, scaleFactor=1.2, minNeighbors=5)
     (x,y,w,h) = face[0]
     return image_gray[y:y+w, x:x+h], face[0]
 
@@ -46,43 +46,40 @@ def prepare_data(data_path):
     return faces, labels
 
 # ---------------------------------------------
-@app.route('/flask', methods = ['GET', 'POST'])
-def flask():
+@app.route('/attendences', methods = ["POST"])
+def attendances():
     if request.method == 'POST':
-        json_data = request.get_json()
-        mycol = db["flask"]
-        mydict = { "name": "John", "address": "Highway 37" }
-        mydoc = mycol.find(mydict).count()
-        if mydoc == 0:
-            x = mycol.insert_one(mydict)
-            print(x.inserted_id)
-            return jsonify("success !")
-        else:
-            return jsonify("Objects exists")
+        collection = db['attendances']
 
-# ---------------------------------------------
-@app.route('/attendence', methods = ["POST"])
-def attendance():
-    if request.method == 'POST':
-        collection = db['attendence']
-
-        attendence_check = {'course': "123123", 'teacherID': "456456",
-            "times": datetime.now().strftime('%Y/%m/%d')}
-
-        if ("542" in collection.find(attendence_check)[0]['students']):
-            print('true')
-
-        collection.update( attendence_check, {'$push': {'students': "12345"}})
-        return jsonify('test')
-
-        date_now = str(datetime.now()).split(" ")[1]
-        date_now_split = date_now.split(".")[0]
-        attendance_id = date_now_split.split(":")[0] + date_now_split.split(":")[1] + date_now_split.split(":")[2] + date_now_split[1]
+        # attendence_check = {'course': "123123", 'teacherID': "456456",
+        #     "times": datetime.now().strftime('%Y/%m/%d')}
 
         attendence_data = {
-            'attendance_id': attendance_id, 'course': "123123", 'teacherID': "456456",
-            "times": datetime.now().strftime('%Y/%m/%d'), 'students': ['123123']
+            # '_id': "12345678sdfg",
+            'attendanceID': "1234", 
+            'course': "1234",
+            "times": "000", 
+            'students': ["123456"]
         }
+
+        print(attendence_data)
+
+        # attendence_data = {'attendance_id': '1123551000', 'course': '1597865496895E6ZJo', 'times': '1599588000000'}
+
+        # if ("542" in collection.find(attendence_check)[0]['students']):
+        #     print('true')
+
+        # collection.update( attendence_check, {'$push': {'students': "12345"}})
+        # return jsonify('test')
+
+        # date_now = str(datetime.now()).split(" ")[1]
+        # date_now_split = date_now.split(".")[0]
+        # attendance_id = date_now_split.split(":")[0] + date_now_split.split(":")[1] + date_now_split.split(":")[2] + date_now_split[1]
+
+        # attendence_data = {
+        #     'attendance_id': attendance_id, 'course': "123123", 'teacherID': "456456",
+        #     "times": datetime.now().strftime('%Y/%m/%d'), 'students': ['123123']
+        # }
 
         collection.insert_one(attendence_data)
 
@@ -92,17 +89,18 @@ def attendance():
 @app.route('/coures', methods = ['GET'])
 def course():
     if request.method == 'GET':
+        # print("course")
         collection = db['courses']
         cursor = collection.find({})
-
         list_course = []
         for document in cursor:
             hour = document['startTime'].split(":")[0]+"h"+document['startTime'].split(":")[1]
             weekDays = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
-            # print(document['weekday'])
-            d = {"courseID": document['courseID'], "name": document['name'] + "( " + hour + "-" + weekDays[document['weekday']-1] + " )"+"Nguyen Thi Phuong Tram"}
+            # print("weekly: ", document)
+            d = {"courseID": document['courseID'], "name": document['name'] + "( " + hour + "-" + weekDays[document['weekly']-1] + " )"+"Nguyen Thi Phuong Tram"}
             list_course.append(d)
         return {"data": list_course}
+
 # ---------------------------------------------
 @app.route('/students', methods = ['GET'])
 def students():
@@ -110,72 +108,66 @@ def students():
         collection = db['students']
         cursor = collection.find({})
         list_student = []
+
         for student in cursor:
-            s = {"studentID": student['studentID'], "name": "MSSV: "+student['studentID']+"-"+student['name'], 'names': student['name']}
+            s = {
+                "studentID": student['studentID'], 
+                "name": "MSSV: "+student['studentID']+"-"+student['name'], 
+                'names': student['name']
+            }
+
             list_student.append(s)
         return {'data': list_student}
 
 # ---------------------------------------------
-@app.route('/training', methods=['GET', 'POST'])
-def training():
-    if request.method == 'GET':
-        print("training data")
-        faces, labels = prepare_data('trainings')
-        print('Total faces = ', faces)
-        print('Total labels = ', labels)
-
-        recognizer = cv2.face.LBPHFaceRecognizer_create()
-        recognizer.train(faces, np.array(labels))
-        recognizer.write('trainer.yml') 
-
-        return jsonify("Training Data")
-
-face_detector = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
 @app.route('/saveimagegray', methods=['POST'])
 def saveimagegray():
     if request.method == 'POST':
         json_data = request.get_json()
-        input_file = open('gray.txt', "w")
+        input_file = open('save.txt', "w")
         input_file.write(json_data['img'])
-        input_file = open('gray.txt', 'r')
+        input_file = open('save.txt', 'r')
         coded_string = input_file.read()
         image_64_decode = base64.b64decode(coded_string)
     
-        image_save = open("gray.jpg" , 'wb') 
+        image_save = open("save.jpg" , 'wb') 
         image_save.write(image_64_decode)
 
-        image = cv2.imread("gray.jpg")
+        image = cv2.imread("save.jpg")
 
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        faces = face_detector.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5,)
-        for (x,y,w,h) in faces:
-            try:
-                # cv2.rectangle(image, (x,y), (x+w,y+h), (255,0,0), 2)
-                cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        faces = face_detector.detectMultiScale(gray)
+        if(len(faces) == 1):
+            for (x,y,w,h) in faces:
+                try:
+                    # cv2.rectangle(image, (x,y), (x+w,y+h), (255,0,0), 2)
+                    cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-                filename = str(datetime.now()).split(" ")[1]
-                name = filename.split(".")[0]
-                namefile = name.split(":")[0] + name.split(":")[1] + name.split(":")[2] + name[1] + '.jpg'
+                    filename = str(datetime.now()).split(" ")[1]
+                    name = filename.split(".")[0]
+                    namefile = name.split(":")[0] + name.split(":")[1] + name.split(":")[2] + name[1] + '.jpg'
 
-                cwd = os.getcwd()
-                print(cwd)
-                dir = os.path.join(cwd + "\\traininggray\\" , json_data['id'])
-                if not os.path.exists(dir):
-                    os.mkdir(dir)
+                    cwd = os.getcwd()
+                    print(cwd)
+                    dir = os.path.join(cwd + "\\training\\" , json_data['id'])
+                    if not os.path.exists(dir):
+                        os.mkdir(dir)
 
-                list = os.listdir(dir) 
-                number_files = len(list)
+                    list = os.listdir(dir) 
+                    number_files = len(list)
 
-                if number_files >= 50:
-                    return jsonify("full_image")
-                print("number_files: ", number_files) 
+                    if number_files >= 50:
+                        return jsonify("full_image")
+                    print("number_files: ", number_files) 
 
-                image_result = 'traininggray/'+ json_data['id'] +"/" + namefile
-                cv2.imwrite(image_result, gray[y:y+h,x:x+w])
-            except:
-                # return jsonify("")
-                print('no save image', json_data['id'])
-                pass
+                    image_result = 'training/'+ json_data['id'] +"/" + namefile
+                    # image_result = "training/%s/%s".format(json_data['id'],namefile)
+                    cv2.imwrite(image_result, gray[y:y+h,x:x+w])
+                except:
+                    # return jsonify("")
+                    print('no save image', json_data['id'])
+                    pass
+
         return jsonify("Take picture")
         
          
@@ -184,9 +176,6 @@ def saveimagegray():
 def saveimage():
     if request.method == 'POST':
         json_data = request.get_json()
-        # return jsonify(json_data)
-        # print('post')
-        # print('save image', json_data['id'])
 
         input_file = open('save.txt', "w")
         input_file.write(json_data['img'])
@@ -208,7 +197,7 @@ def saveimage():
 
             cwd = os.getcwd()
             print(cwd)
-            dir = os.path.join(cwd + "\\training\\" , json_data['id'])
+            dir = os.path.join(cwd + "\\training_old\\" , json_data['id'])
             if not os.path.exists(dir):
                 os.mkdir(dir)
 
@@ -219,26 +208,11 @@ def saveimage():
                 return jsonify("full_image")
             print("number_files: ", number_files) 
 
-            image_result = open('training/'+ json_data['id'] +"/" + namefile, 'wb') 
+            image_result = open('training_old/'+ json_data['id'] +"/" + namefile, 'wb') 
             image_result.write(image_64_decode)
         except:
-            # return jsonify("")
             print('no save image', json_data['id'])
             pass
-
-
-        # faces, labels = prepare_data('training')
-        # recognizer = cv2.face.LBPHFaceRecognizer_create()
-        # recognizer.train(faces, np.array(labels))
-        # recognizer.write("trainer.yml") 
-
-        # test1 =cv2.imread("decode.jpg")
-
-        # try:
-        #     face_test, bounding_box = face_detection(test1)
-            
-        # except:
-        #     return jsonify("")
 
         return jsonify("Take picture")
 # ---------------------------------------------
@@ -247,14 +221,7 @@ def get_recognition():
     if request.method == 'POST':
         i = 0 
         json_data = request.get_json()
-        # return jsonify(json_data)
-        # print('post')
         print('post', json_data['id'])
-
-        # return jsonify({"number": "123"})
-        # image = open('assets/img/users/kiet.jpg', 'rb')
-        # image_read = image.read()
-        # image_64_encode = base64.encodebytes(image_read)
 
         input_file = open('input.txt', "w")
         input_file.write(json_data['img'])
@@ -262,94 +229,141 @@ def get_recognition():
         coded_string = input_file.read()
         image_64_decode = base64.b64decode(coded_string)
 
-        # filename = str(datetime.now()).split(" ")[1]
-        # name = filename.split(".")[0]
-        # namefile = name.split(":")[0] + name.split(":")[1] + name.split(":")[2] + name[1] + '.jpg'
-        # image_result = open('training/'+ "16130546/" + namefile, 'wb') 
-
         image_result = open("decode.jpg" , 'wb') 
         image_result.write(image_64_decode)
-        
-        # i = i+1
-        # return jsonify({"number": i})
-
-        # faces, labels = prepare_data('training')
-        # recognizer = cv2.face.LBPHFaceRecognizer_create()
-        # recognizer.train(faces, np.array(labels))
-        # recognizer.write("trainer.yml") 
 
         recognizer = cv2.face.LBPHFaceRecognizer_create()
         recognizer.read('trainer.yml')
 
         test1 =cv2.imread("decode.jpg")
-
-        # face_test, bounding_box = face_detection(test1)
+        result = ""
         try:
             gray = cv2.cvtColor(test1, cv2.COLOR_BGR2GRAY)
-            faces = face_detector.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5)
+            faces = face_detector.detectMultiScale(gray)
+            
             for (x, y, w, h) in faces:
                 cv2.rectangle(test1, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                cv2.imwrite("decode.jpg", gray[y:y+h,x:x+w])
+                # break
                 predict_result = recognizer.predict(gray[y:y + h, x:x + w])
-
-                if (predict_result[1] > 20):
-                    return jsonify('------')
+                # predict_result = [16130546, 9]
+                print(predict_result)
+                if (predict_result[1] > 8):
+                    return jsonify('-')
                 else:
-                    # mycol = db["attendance"]
-                    # student_attendences = {'student': recognizer.predict(face_test)[0], 'time': datetime.now()}
-                    # mycol.insert_one(student_attendences)
-
-                    collection = db['attendence']
-                    attendence_check = {'course': json_data['id'], "times": datetime.now().strftime('%Y/%m/%d')}
+                    print("123456")
+                    collection = db['attendances']
+                    times = datetime.now().strftime('%Y/%m/%d') + ' 1:0'
+                    times = datetime.strptime(times, '%Y/%m/%d %H:%M')
+                    timestamp = str(datetime.timestamp(times)).split(".")[0] + "000"
+                    attendence_check = {'course': json_data['id'], "times": timestamp}
                     count_row = collection.find(attendence_check).count()
 
-                    # collection_student = db['students']
-                    # # student_recognition = collection_student.find_one({'studentID': str(predict_result[0])})
-                    # student_recognition = collection_student.find_one({'studentID': "16130546"})
-                    print(predict_result[1])
-                    # if count_row == 0:
-                    #     # get Gourse
-                    #     collection_course = db['courses']
-                    #     course_check = {'courseID': json_data['id']}
-                    #     course = collection_course.find_one(course_check)
+                    collection_student = db['students']
+                    student_recognition = collection_student.find_one({'studentID': str(predict_result[0])})
+
+                    # result = result + "MSSV: "+student_recognition['studentID']+" - " + student_recognition['name']
+                    print(result)
+
+                    if count_row == 0:
+                        print("Th1")
+                        # get Gourse
+                        collection_course = db['courses']
+                        course_check = {'courseID': json_data['id']}
+                        course = collection_course.find_one(course_check)
                     
-                    #     # check date
-                    #     start_date = datetime.strptime(course['startDate'], '%Y/%m/%d')
-                    #     end_date = datetime.strptime(course['endDate'], '%Y/%m/%d')
-                    #     if ((start_date < datetime.now()) & (end_date > datetime.now())):
-                    #         return jsonify("This course is outdate")
+                        # check date
+                        start_date = datetime.strptime(course['startDate'], '%Y/%m/%d')
+                        end_date = datetime.strptime(course['endDate'], '%Y/%m/%d')
 
-                    #     # Check Week day and hour
-                    #     start_time = datetime.now().strftime('%Y/%m/%d') + " " + course['startTime']
-                    #     start_time = datetime.strptime(start_time, '%Y/%m/%d %H:%M')
-                    #     end_time = datetime.now().strftime('%Y/%m/%d') + " " + course['endTime']
-                    #     end_time = datetime.strptime(end_time, '%Y/%m/%d %H:%M')
+                        if ((start_date < datetime.now()) & (end_date > datetime.now())) == False:
+                            return jsonify("This course is outdate")
 
-                    #     week_day = datetime.now().weekday()
-                    #     if (week_day==6):
-                    #         week_day = 0
-                    #     else:
-                    #         week_day = week_day + 1
+                        # Check Week day and hour
+                        start_time = datetime.now().strftime('%Y/%m/%d') + " " + course['startTime']
+                        start_time = datetime.strptime(start_time, '%Y/%m/%d %H:%M')
+                        end_time = datetime.now().strftime('%Y/%m/%d') + " " + course['endTime']
+                        end_time = datetime.strptime(end_time, '%Y/%m/%d %H:%M')
 
-                    #     if ((start_time < datetime.now()) & (end_time > datetime.now()) & datetime.now() & (week_day == course['weekday'])):
-                    #         return jsonify('This course has not taken place yet')
+                        week_day = datetime.now().weekday()
+                        if (week_day==6):
+                            week_day = 0
+                        else:
+                            week_day = week_day + 1
 
-                    #     # Check Student exist in Course
-                    #     if (predict_result[0] in course['students']) == False:
-                    #         return jsonify('This student did not exist in the course')
+                        # if ((start_time < datetime.now()) & (end_time > datetime.now()) & (week_day == course['weekday'])) == False:
+                        #     return jsonify('This course has not taken place yet')
 
-                    #     date_now = str(datetime.now()).split(" ")[1]
-                    #     date_now_split = date_now.split(".")[0]
-                    #     attendance_id = date_now_split.split(":")[0] + date_now_split.split(":")[1] + date_now_split.split(":")[2] + date_now_split[1]
-                    #     attendence_data = {
-                    #         'attendance_id': attendance_id, 'course': json_data['id'], 'teacherID': "teacheID",
-                    #         "times": datetime.now().strftime('%Y/%m/%d'), 'students': [predict_result[0]]
-                    #     }
-                    #     collection.insert_one(attendence_data)
-                    # else:
-                    #     if (predict_result[0] in collection.find(attendence_check)[0]['students']) == False:
-                    #         collection.update( attendence_check, {'$push': {'students': predict_result[0]}})
-        except:
-            return jsonify("++++++")
+                        # Check Student exist in Course
+                        print("course: ", course['students'])
+                        if (str(predict_result[0]) in course['students']) == False:
+                            return jsonify('This student did not exist in this course')
+                        else:
+                            result = result + "MSSV: "+student_recognition['studentID']+" - " + student_recognition['name']
+
+                                
+                        # filename = str(datetime.now()).split(" ")[1]
+                        # name = filename.split(".")[0]
+                        # namefile = name.split(":")[0] + name.split(":")[1] + name.split(":")[2] + name[1] + '.jpg'
+
+
+                        date_now = str(datetime.now()).split(" ")[1]
+                        date_now_split = date_now.split(".")[0]
+                        attendance_id = date_now_split.split(":")[0] + date_now_split.split(":")[1] + date_now_split.split(":")[2] + date_now_split[1]
+
+                        print("attendance_id: ", attendance_id)
+
+                        times = datetime.now().strftime('%Y/%m/%d') + ' 1:0'
+                        times = datetime.strptime(times, '%Y/%m/%d %H:%M')
+                        timestamp = str(datetime.timestamp(times)).split(".")[0] + "000"
+
+                        attendence_data = {
+                            'attendanceID': attendance_id, 
+                            'course': json_data['id'],
+                            "times": timestamp, 
+                            'students': [predict_result[0]]
+                        }
+                        print("attendence_data: ", attendence_data)
+                        collection.insert_one(attendence_data)
+                    else:
+                        print("Th2")
+                        # get Gourse
+                        collection_course = db['courses']
+                        course_check = {'courseID': json_data['id']}
+                        course = collection_course.find_one(course_check)
+                    
+                        # check date
+                        start_date = datetime.strptime(course['startDate'], '%Y/%m/%d')
+                        end_date = datetime.strptime(course['endDate'], '%Y/%m/%d')
+                        if ((start_date < datetime.now()) & (end_date > datetime.now())) == False:
+                            return jsonify("This course is outdate")
+
+                        # Check Week day and hour
+                        start_time = datetime.now().strftime('%Y/%m/%d') + " " + course['startTime']
+                        start_time = datetime.strptime(start_time, '%Y/%m/%d %H:%M')
+                        end_time = datetime.now().strftime('%Y/%m/%d') + " " + course['endTime']
+                        end_time = datetime.strptime(end_time, '%Y/%m/%d %H:%M')
+
+                        week_day = datetime.now().weekday()
+                        if (week_day==6):
+                            week_day = 0
+                        else:
+                            week_day = week_day + 1
+
+                        # if ((start_time < datetime.now()) & (end_time > datetime.now()) & (week_day == course['weekday'])) == False:
+                        #     return jsonify('This course has not taken place yet')
+
+                        if (str(predict_result[0]) in course['students']) == False:
+                            return jsonify('This student did not exist in this course')
+                        else:
+                            result = result + "MSSV: "+student_recognition['studentID']+" - " + student_recognition['name']
+                            # add student
+                            if (predict_result[0] in collection.find(attendence_check)[0]['students']) == False:
+                                print("This student is atendanced")
+                                collection.update( attendence_check, {'$push': {'students': predict_result[0]}})
+        except ValueError:
+            print(ValueError)
+            return jsonify("+")
 
  
         # collection_student = db['students']
@@ -357,7 +371,8 @@ def get_recognition():
         # student_recognition = collection_student.find_one({'studentID': "16130546"})
 
         # return jsonify("MSSV: "+student_recognition['studentID']+" - " + student_recognition['name'])
-        return jsonify("have data")
+        print("return: ", result)
+        return jsonify(result)
 
 # -------------------------------------------------
 @app.route('/course_check', methods=["GET"])
